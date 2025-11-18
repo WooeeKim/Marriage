@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>혼인 상태별 연령 분포</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Pretendard", "Inter", system-ui, -apple-system, sans-serif;
+        background: #f6f7fb;
+        color: #111827;
+      }
+      *, *::before, *::after {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        display: flex;
+        justify-content: center;
+      }
+      .app {
+        width: min(1200px, 100%);
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 16px;
+        padding: 28px 32px 36px;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.06);
+      }
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+      }
+      h1 {
+        font-size: 24px;
+        margin: 0;
+        letter-spacing: -0.02em;
+      }
+      .controls {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 13px;
+        color: #4b5563;
+      }
+      select {
+        min-width: 110px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid #d1d5db;
+        background: #f9fafb;
+        font-weight: 600;
+        color: #111827;
+        cursor: pointer;
+      }
+      .chart-wrap {
+        position: relative;
+        margin-top: 16px;
+        border-radius: 12px;
+        padding: 16px 16px 24px;
+        background: linear-gradient(145deg, #f9fafb, #eef2ff);
+        border: 1px solid #e5e7eb;
+      }
+      .chart {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
+        gap: 12px;
+        align-items: end;
+        height: 380px;
+        padding: 12px 8px 0;
+      }
+      .bar {
+        position: relative;
+        background: linear-gradient(180deg, #6366f1, #4f46e5);
+        border-radius: 12px 12px 10px 10px;
+        transition: transform 0.15s ease, opacity 0.15s ease;
+        min-height: 4px;
+      }
+      .bar:hover {
+        transform: translateY(-6px);
+        opacity: 0.92;
+      }
+      .bar-label {
+        position: absolute;
+        top: -24px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 12px;
+        font-weight: 700;
+        color: #111827;
+        background: #fff;
+        padding: 4px 6px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.07);
+        white-space: nowrap;
+      }
+      .age-label {
+        text-align: center;
+        margin-top: 10px;
+        font-size: 12px;
+        color: #374151;
+      }
+      .meta {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+        color: #4b5563;
+        font-size: 13px;
+      }
+      .meta strong {
+        color: #111827;
+      }
+      .error {
+        margin-top: 16px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        background: #fef2f2;
+        color: #b91c1c;
+        border: 1px solid #fecdd3;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <h1>혼인 상태별 연령 분포</h1>
+        <div class="controls">
+          <label>
+            연도
+            <select id="year"></select>
+          </label>
+          <label>
+            성별
+            <select id="gender">
+              <option value="M">남자</option>
+              <option value="F">여자</option>
+            </select>
+          </label>
+          <label>
+            혼인 상태
+            <select id="status"></select>
+          </label>
+        </div>
+      </header>
+
+      <section class="chart-wrap">
+        <div id="chart" class="chart" aria-live="polite"></div>
+        <div id="meta" class="meta"></div>
+        <div id="error" class="error" style="display: none"></div>
+      </section>
+    </main>
+
+    <script>
+      const state = {
+        data: null,
+        year: null,
+        gender: "M",
+        status: null,
+      };
+
+      const elYear = document.getElementById("year");
+      const elGender = document.getElementById("gender");
+      const elStatus = document.getElementById("status");
+      const elChart = document.getElementById("chart");
+      const elMeta = document.getElementById("meta");
+      const elError = document.getElementById("error");
+
+      function setError(message) {
+        if (message) {
+          elError.textContent = message;
+          elError.style.display = "block";
+        } else {
+          elError.style.display = "none";
+        }
+      }
+
+      function renderChart() {
+        if (!state.data) return;
+        const { ages, percentages } = state.data;
+        const yearKey = String(state.year);
+        const gData = percentages?.[yearKey]?.[state.gender] || {};
+        const values = ages.map((age) => Number(gData[state.status]?.[age] ?? 0));
+
+        const maxVal = Math.max(...values, 10);
+        const chartMax = Math.ceil(maxVal / 5) * 5;
+
+        elChart.innerHTML = "";
+        values.forEach((val, idx) => {
+          const wrap = document.createElement("div");
+          wrap.style.display = "flex";
+          wrap.style.flexDirection = "column";
+          wrap.style.alignItems = "center";
+          wrap.style.gap = "6px";
+
+          const bar = document.createElement("div");
+          bar.className = "bar";
+          bar.style.height = `${(val / chartMax) * 320}px`;
+
+          const barLabel = document.createElement("div");
+          barLabel.className = "bar-label";
+          barLabel.textContent = `${val.toFixed(1)}%`;
+
+          const ageLabel = document.createElement("div");
+          ageLabel.className = "age-label";
+          ageLabel.textContent = ages[idx];
+
+          bar.appendChild(barLabel);
+          wrap.appendChild(bar);
+          wrap.appendChild(ageLabel);
+          elChart.appendChild(wrap);
+        });
+
+        elMeta.innerHTML = `
+          <div><strong>연도</strong> ${state.year}</div>
+          <div><strong>성별</strong> ${state.gender === "M" ? "남자" : "여자"}</div>
+          <div><strong>혼인 상태</strong> ${state.status}</div>
+          <div><strong>스케일</strong> 0 ~ ${chartMax}%</div>
+        `;
+      }
+
+      function handleChange() {
+        state.year = Number(elYear.value);
+        state.gender = elGender.value;
+        state.status = elStatus.value;
+        renderChart();
+      }
+
+      async function init() {
+        try {
+          const res = await fetch("marriage_data.json");
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          state.data = data;
+          state.year = data.years[0];
+          state.status = data.statuses[0];
+
+          data.years.forEach((y) => {
+            const opt = document.createElement("option");
+            opt.value = y;
+            opt.textContent = y;
+            elYear.appendChild(opt);
+          });
+          data.statuses.forEach((s) => {
+            const opt = document.createElement("option");
+            opt.value = s;
+            opt.textContent = s;
+            elStatus.appendChild(opt);
+          });
+
+          elYear.value = state.year;
+          elStatus.value = state.status;
+          elGender.value = state.gender;
+
+          [elYear, elGender, elStatus].forEach((el) => el.addEventListener("change", handleChange));
+          renderChart();
+        } catch (err) {
+          console.error(err);
+          setError("marriage_data.json을 불러올 수 없어요. 로컬 서버에서 열어 주세요 (예: python3 -m http.server).");
+        }
+      }
+
+      init();
+    </script>
+  </body>
+</html>
