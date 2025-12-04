@@ -970,9 +970,9 @@
             stroke(0, 60);
             strokeWeight(0.6);
           } else {
-            fill(255);
-            stroke(0, 120);
-            strokeWeight(0.6);
+            fill(255, 40); // 흰색, 투명도 낮춤 (40/255 ≈ 15%)
+            stroke(0, 30); // 테두리도 더 투명하게
+            strokeWeight(0.4);
           }
         } else {
           fill(getColorFor(assign.gender, assign.ageIndex));
