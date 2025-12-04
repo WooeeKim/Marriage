@@ -1,0 +1,1107 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>혼인 상태별 인구 시각화 & 차트</title>
+  <!-- p5.js -->
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      color-scheme: dark;
+      font-family: "Pretendard", "Inter", system-ui, -apple-system, sans-serif;
+      background: #000;
+      color: #fff;
+    }
+
+    body {
+      margin: 0;
+      height: 100vh;
+      overflow: hidden; /* 전체 페이지는 안 스크롤, 시각화 뷰 내부만 스크롤 */
+      font-family: "Pretendard", "Inter", system-ui, -apple-system, sans-serif;
+      background: #000;
+      color: #fff;
+    }
+
+    /* === 슬라이드 컨테이너 === */
+    .viewport {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .view {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      justify-content: center;
+      align-items: stretch;
+      transition: transform 0.45s ease, opacity 0.45s ease;
+    }
+
+    /* 뷰 안에서 실제 스크롤 되는 영역 */
+    .scroll-shell {
+      width: 100%;
+      height: 100%;
+      overflow-y: auto;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+    }
+
+    .app {
+      width: 100%;
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      padding: 0;
+      box-shadow: none;
+    }
+
+    header {
+      display: none; /* 헤더 숨김 */
+    }
+
+    h1 {
+      font-size: 24px;
+      margin: 0;
+      letter-spacing: -0.02em;
+    }
+
+    .mode-toggle-btn {
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid #d1d5db;
+      background: #f9fafb;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* === visual / detail 모드 슬라이드 === */
+    body[data-mode="visual"] #view-visual {
+      transform: translateX(0%);
+      opacity: 1;
+    }
+    body[data-mode="visual"] #view-detail {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+
+    body[data-mode="detail"] #view-visual {
+      transform: translateX(-100%);
+      opacity: 0;
+    }
+    body[data-mode="detail"] #view-detail {
+      transform: translateX(0%);
+      opacity: 1;
+    }
+
+    /* ==================== */
+    /* 시각화(입자) 쪽 레이아웃 */
+    /* ==================== */
+    .visual-layout {
+      position: relative;
+      width: 100vw;
+      min-height: 200vh; /* 스크롤 확보 */
+    }
+
+    #vis-container {
+      position: sticky;
+      top: 0;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+
+    #p5-holder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #legend-panel {
+      position: fixed;
+      right: 20px;
+      top: 20px;
+      width: 200px;
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
+      padding: 16px;
+      background: rgba(0, 0, 0, 0.8);
+      border-radius: 12px;
+      z-index: 1000;
+    }
+
+    #legend-panel h1 {
+      font-size: 18px;
+      margin-bottom: 12px;
+      color: #fff;
+    }
+
+    #legend-panel p.desc {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.8);
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+
+
+    table.legend {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-top: 8px;
+    }
+
+    table.legend th,
+    table.legend td {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 8px 6px;
+      text-align: center;
+    }
+
+    table.legend td {
+      text-align: center;
+    }
+
+    table.legend th {
+      position: sticky;
+      top: 0;
+      background: rgba(0, 0, 0, 0.9);
+      z-index: 1;
+      color: #fff;
+    }
+
+    .color-checkbox {
+      display: inline-block;
+      width: 32px;
+      height: 32px;
+      border: 2px solid rgba(0, 0, 0, 0.2);
+      cursor: pointer;
+      position: relative;
+      transition: opacity 0.2s, border-color 0.2s;
+    }
+
+    .color-checkbox:hover {
+      border-color: rgba(0, 0, 0, 0.4);
+    }
+
+    .color-checkbox input[type="checkbox"] {
+      position: absolute;
+      opacity: 0;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      cursor: pointer;
+    }
+
+    .color-checkbox input[type="checkbox"]:checked + .checkbox-indicator {
+      opacity: 1;
+    }
+
+    .color-checkbox input[type="checkbox"]:not(:checked) + .checkbox-indicator {
+      opacity: 0;
+    }
+
+    .checkbox-indicator {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.2s;
+    }
+
+    .checkbox-indicator::after {
+      content: '✓';
+      color: white;
+      font-size: 20px;
+      font-weight: bold;
+      text-shadow: 0 0 4px rgba(0, 0, 0, 0.9);
+    }
+
+    #year-display {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      font-size: 24px;
+      font-weight: 700;
+      color: #111827;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 8px 16px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      pointer-events: none;
+    }
+
+    /* ==================== */
+    /* 차트(숫자) 쪽 스타일 */
+    /* ==================== */
+    .controls {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 4px;
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 13px;
+      color: #4b5563;
+    }
+
+    select {
+      min-width: 110px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid #d1d5db;
+      background: #f9fafb;
+      font-weight: 600;
+      color: #111827;
+      cursor: pointer;
+    }
+
+    .chart-wrap {
+      position: relative;
+      margin-top: 16px;
+      border-radius: 12px;
+      padding: 16px 16px 24px;
+      background: linear-gradient(145deg, #f9fafb, #eef2ff);
+      border: 1px solid #e5e7eb;
+    }
+
+    .chart {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
+      gap: 12px;
+      align-items: end;
+      height: 380px;
+      padding: 12px 8px 0;
+    }
+
+    .bar {
+      position: relative;
+      background: linear-gradient(180deg, #6366f1, #4f46e5);
+      border-radius: 12px 12px 10px 10px;
+      transition: transform 0.15s ease, opacity 0.15s ease;
+      min-height: 4px;
+    }
+
+    .bar:hover {
+      transform: translateY(-6px);
+      opacity: 0.92;
+    }
+
+    .bar-label {
+      position: absolute;
+      top: -24px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 12px;
+      font-weight: 700;
+      color: #111827;
+      background: #fff;
+      padding: 4px 6px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.07);
+      white-space: nowrap;
+    }
+
+    .age-label {
+      text-align: center;
+      margin-top: 10px;
+      font-size: 12px;
+      color: #374151;
+    }
+
+    .meta {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+      color: #4b5563;
+      font-size: 13px;
+    }
+
+    .meta strong {
+      color: #111827;
+    }
+
+    .error {
+      margin-top: 16px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      background: #fef2f2;
+      color: #b91c1c;
+      border: 1px solid #fecdd3;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body data-mode="visual">
+  <div class="viewport">
+    <!-- ======================= -->
+    <!-- 1. 시각화(입자) 뷰 -->
+    <!-- ======================= -->
+    <section class="view" id="view-visual">
+      <div class="scroll-shell" id="visual-scroll">
+        <main class="app">
+          <section class="visual-layout">
+            <section id="vis-container">
+              <div id="p5-holder"></div>
+              <div id="year-display"></div>
+            </section>
+          </section>
+        </main>
+      </div>
+      <aside id="legend-panel">
+        <h1>혼인 상태 입자 지도</h1>
+        <p class="desc">
+          화면을 스크롤하면 2005 → 2010 → 2015 → 2020년으로 혼인 상태 분포가 서서히 변합니다.
+          오른쪽 표에서 연령대와 성별을 복수 선택하면 선택한 그룹만 색과 움직임이 고정되고,
+          나머지는 흰 원 + 얇은 검정 테두리로 표시됩니다.
+        </p>
+        <table class="legend" id="age-gender-legend">
+          <thead>
+            <tr>
+              <th>남자</th>
+              <th>여자</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- JS에서 자동 생성 -->
+          </tbody>
+        </table>
+      </aside>
+    </section>
+
+    <!-- ======================= -->
+    <!-- 2. 숫자 / 차트 뷰 -->
+    <!-- ======================= -->
+    <section class="view" id="view-detail">
+      <div class="scroll-shell">
+        <main class="app">
+          <header>
+            <h1>혼인 상태별 연령 분포 (기본 차트)</h1>
+            <button id="btn-to-visual" class="mode-toggle-btn">
+              시각화만 보기
+            </button>
+          </header>
+
+          <div class="controls">
+            <label>
+              연도
+              <select id="year"></select>
+            </label>
+            <label>
+              성별
+              <select id="gender">
+                <option value="M">남자</option>
+                <option value="F">여자</option>
+              </select>
+            </label>
+            <label>
+              혼인 상태
+              <select id="status"></select>
+            </label>
+          </div>
+
+          <section class="chart-wrap">
+            <div id="chart" class="chart" aria-live="polite"></div>
+            <div id="meta" class="meta"></div>
+            <div id="error" class="error" style="display: none"></div>
+          </section>
+        </main>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    /* ========== 데이터 로드 (로컬 우선, 실패 시 GitHub Raw) ========== */
+    const REMOTE_JSON_URL = "https://raw.githubusercontent.com/WooeeKim/Marriage/main/marriage_data.json";
+
+    function loadData() {
+      if (loadData.promise) return loadData.promise;
+      const candidates = ["marriage_data.json", REMOTE_JSON_URL];
+      loadData.promise = (async () => {
+        let lastError = null;
+        for (const url of candidates) {
+          try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return await res.json();
+          } catch (err) {
+            lastError = err;
+            console.warn(`데이터 불러오기 실패 (${url})`, err);
+          }
+        }
+        throw lastError ?? new Error("데이터를 불러올 수 없습니다.");
+      })();
+      return loadData.promise;
+    }
+  </script>
+
+  <script>
+    /* ========== 모드 전환 (시각화 <-> 차트) ========== */
+    const bodyEl = document.body;
+    const btnToDetail = document.getElementById("btn-to-detail");
+    const btnToVisual = document.getElementById("btn-to-visual");
+
+    btnToDetail.addEventListener("click", () => {
+      bodyEl.dataset.mode = "detail";
+    });
+
+    btnToVisual.addEventListener("click", () => {
+      bodyEl.dataset.mode = "visual";
+    });
+
+    /* ========== 차트용 상태/렌더링 ========== */
+    const state = {
+      data: null,
+      year: null,
+      gender: "M",
+      status: null,
+    };
+
+    const elYear = document.getElementById("year");
+    const elGender = document.getElementById("gender");
+    const elStatus = document.getElementById("status");
+    const elChart = document.getElementById("chart");
+    const elMeta = document.getElementById("meta");
+    const elError = document.getElementById("error");
+
+    function setError(message) {
+      if (message) {
+        elError.textContent = message;
+        elError.style.display = "block";
+      } else {
+        elError.style.display = "none";
+      }
+    }
+
+    function renderChart() {
+      if (!state.data) return;
+      const { ages, percentages } = state.data;
+      const yearKey = String(state.year);
+      const gData = percentages?.[yearKey]?.[state.gender] || {};
+      const values = ages.map((age) => Number(gData[state.status]?.[age] ?? 0));
+
+      const maxVal = Math.max(...values, 10);
+      const chartMax = Math.ceil(maxVal / 5) * 5;
+
+      elChart.innerHTML = "";
+      values.forEach((val, idx) => {
+        const wrap = document.createElement("div");
+        wrap.style.display = "flex";
+        wrap.style.flexDirection = "column";
+        wrap.style.alignItems = "center";
+        wrap.style.gap = "6px";
+
+        const bar = document.createElement("div");
+        bar.className = "bar";
+        bar.style.height = `${(val / chartMax) * 320}px`;
+
+        const barLabel = document.createElement("div");
+        barLabel.className = "bar-label";
+        barLabel.textContent = `${val.toFixed(1)}%`;
+
+        const ageLabel = document.createElement("div");
+        ageLabel.className = "age-label";
+        ageLabel.textContent = ages[idx];
+
+        bar.appendChild(barLabel);
+        wrap.appendChild(bar);
+        wrap.appendChild(ageLabel);
+        elChart.appendChild(wrap);
+      });
+
+      elMeta.innerHTML = `
+        <div><strong>연도</strong> ${state.year}</div>
+        <div><strong>성별</strong> ${state.gender === "M" ? "남자" : "여자"}</div>
+        <div><strong>혼인 상태</strong> ${state.status}</div>
+        <div><strong>스케일</strong> 0 ~ ${chartMax}%</div>
+      `;
+    }
+
+    function handleChange() {
+      state.year = Number(elYear.value);
+      state.gender = elGender.value;
+      state.status = elStatus.value;
+      renderChart();
+    }
+
+    async function initChart() {
+      try {
+        const data = await loadData();
+        state.data = data;
+        state.year = data.years[0];
+        state.status = data.statuses[0];
+
+        data.years.forEach((y) => {
+          const opt = document.createElement("option");
+          opt.value = y;
+          opt.textContent = y;
+          elYear.appendChild(opt);
+        });
+        data.statuses.forEach((s) => {
+          const opt = document.createElement("option");
+          opt.value = s;
+          opt.textContent = s;
+          elStatus.appendChild(opt);
+        });
+
+        elYear.value = state.year;
+        elStatus.value = state.status;
+        elGender.value = state.gender;
+
+        [elYear, elGender, elStatus].forEach((el) =>
+          el.addEventListener("change", handleChange)
+        );
+        renderChart();
+      } catch (err) {
+        console.error(err);
+        setError(
+          "marriage_data.json을 불러올 수 없어요. 네트워크 연결을 확인하거나 로컬 서버에서 열어 주세요 (예: python3 -m http.server)."
+        );
+      }
+    }
+
+    initChart();
+  </script>
+
+  <script>
+    /* ========== p5 입자 시각화 코드 ========== */
+    let marriageData = null;
+    const dataPromise = loadData();
+
+    const POINTS_PER_PERCENT = 0.5; // 인구 2%당 점 1개
+    const PARTICLE_RADIUS = 5; // 점 크기 증가
+    const CLUSTER_RADIUS = 180; // 클러스터 간격 증가
+    
+    // 물리 시뮬레이션 상수
+    const GRAVITY_STRENGTH = 0.015; // 클러스터 중심으로 끌리는 중력 강도 (낮추면 더 자유롭게)
+    const REPULSION_STRENGTH = 0.8; // 파티클 간 반발력 강도 (높이면 더 멀리 밀려남)
+    const REPULSION_DISTANCE = PARTICLE_RADIUS * 4; // 반발력이 작용하는 최소 거리
+    const MAX_VELOCITY = 3.0; // 최대 속도 (높이면 더 빠르게 이동)
+    const FRICTION = 0.97; // 마찰력 (0-1, 1에 가까울수록 마찰 없음)
+    const MAX_RADIUS_MULTIPLIER = 2.5; // 클러스터 중심에서 최대 이동 반경 배수 (높이면 더 넓게 이동)
+
+    let ages = [];
+    let years = [];
+    let genders = ["M", "F"];
+    let statuses = ["미혼", "유배우", "사별", "이혼"];
+
+    const clusterDefs = [
+      { id: "single_male",   label: "미혼 남자",    gender: "M",    status: "미혼" },
+      { id: "single_female", label: "미혼 여자",    gender: "F",    status: "미혼" },
+      { id: "married_male",  label: "기혼 남자",    gender: "M",    status: "유배우" },
+      { id: "married_female",label: "기혼 여자",    gender: "F",    status: "유배우" },
+      { id: "divorced_male", label: "이혼 남자",    gender: "M",    status: "이혼" },
+      { id: "divorced_female",label:"이혼 여자",    gender: "F",    status: "이혼" },
+      { id: "widowed_male",  label: "사별 남자",    gender: "M",    status: "사별" },
+      { id: "widowed_female",label: "사별 여자",    gender: "F",    status: "사별" },
+    ];
+
+    let clusterCenters = [];
+    let clusterIndexByGS = {};
+    let clusterSizes = []; // 각 클러스터의 점 수를 저장
+    let scrollT = 0;
+
+    let allAssignments = [];
+    let particles = [];
+    let PARTICLE_COUNT = 0;
+
+    const activeFilters = new Set();
+
+    function filterKey(gender, ageIndex) {
+      return `${gender}_${ageIndex}`;
+    }
+
+    function getColorFor(gender, ageIndex) {
+      const n = ages.length - 1;
+      const t = n > 0 ? ageIndex / n : 0;
+      let h, s, l;
+      if (gender === "M") {
+        h = 210;
+        s = 80;
+        l = 80 - t * 40;
+      } else {
+        h = 350;
+        s = 80;
+        l = 82 - t * 42;
+      }
+      return `hsl(${h}, ${s}%, ${l}%)`;
+    }
+
+    function setup() {
+      const canvasWidth = Math.min(windowWidth * 0.7, 900);
+      const canvasHeight = windowHeight * 0.9;
+      const canvas = createCanvas(canvasWidth, canvasHeight);
+      canvas.parent("p5-holder");
+
+      textFont("system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif");
+
+      computeClusterCenters();
+
+      dataPromise
+        .then((data) => {
+          marriageData = data;
+          ages = marriageData.ages;
+          years = marriageData.years;
+
+          buildClusterIndexMap();
+          buildAllAssignments();
+          createParticles();
+          buildLegendTable();
+        })
+        .catch((err) => {
+          console.error(err);
+          const yearDisplayElem = document.getElementById("year-display");
+          if (yearDisplayElem) {
+            yearDisplayElem.textContent = "데이터를 불러올 수 없어요.";
+          }
+        });
+
+      updateScrollT();
+      const scrollContainer = document.getElementById("visual-scroll");
+      if (scrollContainer) {
+        scrollContainer.addEventListener("scroll", updateScrollT);
+      }
+    }
+
+    function windowResized() {
+      const canvasWidth = Math.min(windowWidth * 0.7, 900);
+      const canvasHeight = windowHeight * 0.9;
+      resizeCanvas(canvasWidth, canvasHeight);
+      computeClusterCenters();
+    }
+
+    function computeClusterCenters() {
+      clusterCenters = [];
+      const cols = 2; // 2열
+      const rows = 4; // 4행
+      const marginX = width * 0.15;
+      const marginY = height * 0.15;
+      const cellWidth = (width - 2 * marginX) / cols;
+      const cellHeight = (height - 2 * marginY) / rows;
+
+      // 클러스터 크기를 동적으로 계산
+      const maxSize = clusterSizes.length > 0 ? Math.max(...clusterSizes) : 1;
+      const baseClusterRadius = Math.min(cellWidth, cellHeight) * 0.35;
+      const minRadius = baseClusterRadius * 0.6;
+      const maxRadius = baseClusterRadius * 1.5;
+
+      // 4x2 그리드 레이아웃
+      for (let i = 0; i < clusterDefs.length; i++) {
+        const def = clusterDefs[i];
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        
+        // 점 수에 비례하여 클러스터 반지름 조정
+        const size = clusterSizes[i] || 0;
+        const sizeRatio = maxSize > 0 ? size / maxSize : 0;
+        const r = minRadius + (maxRadius - minRadius) * sizeRatio;
+        
+        // 그리드 중앙에 배치
+        const x = marginX + col * cellWidth + cellWidth / 2;
+        const y = marginY + row * cellHeight + cellHeight / 2;
+        
+        clusterCenters.push({ x, y, label: def.label, radius: r });
+      }
+    }
+
+    function buildClusterIndexMap() {
+      clusterIndexByGS = {};
+      clusterDefs.forEach((def, idx) => {
+        clusterIndexByGS[`${def.gender}_${def.status}`] = idx;
+      });
+    }
+
+    function buildAllAssignments() {
+      const yearTotals = [];
+      const perYearCombos = [];
+
+      years.forEach((year) => {
+        const ykey = String(year);
+        const combos = [];
+        let totalCount = 0;
+
+        ages.forEach((ageLabel, ageIndex) => {
+          genders.forEach((gShort) => {
+            statuses.forEach((status) => {
+              const pct =
+                marriageData.percentages[ykey]?.[gShort]?.[status]?.[ageLabel] ?? 0;
+              const count = Math.round(pct * POINTS_PER_PERCENT);
+              if (count <= 0) return;
+              const clusterIdx = clusterIndexByGS[`${gShort}_${status}`];
+              if (clusterIdx === undefined) return;
+
+              combos.push({ clusterIdx, ageIndex, gender: gShort, count });
+              totalCount += count;
+            });
+          });
+        });
+
+        perYearCombos.push(combos);
+        yearTotals.push(totalCount);
+      });
+
+      PARTICLE_COUNT = Math.max(...yearTotals, 0);
+
+      // 각 클러스터의 최대 점 수 계산 (모든 연도 중 최대값)
+      clusterSizes = new Array(clusterDefs.length).fill(0);
+      perYearCombos.forEach((combos) => {
+        const clusterCounts = new Array(clusterDefs.length).fill(0);
+        combos.forEach((c) => {
+          clusterCounts[c.clusterIdx] += c.count;
+        });
+        clusterCounts.forEach((count, idx) => {
+          if (count > clusterSizes[idx]) {
+            clusterSizes[idx] = count;
+          }
+        });
+      });
+
+      allAssignments = years.map((year, yearIdx) => {
+        const combos = perYearCombos[yearIdx];
+        const assignments = [];
+
+        combos.forEach((c) => {
+          for (let i = 0; i < c.count; i++) {
+            assignments.push({
+              clusterIdx: c.clusterIdx,
+              ageIndex: c.ageIndex,
+              gender: c.gender,
+            });
+          }
+        });
+
+        while (assignments.length < PARTICLE_COUNT && assignments.length > 0) {
+          const rand = random(assignments);
+          assignments.push({ ...rand });
+        }
+
+        if (assignments.length > PARTICLE_COUNT) {
+          shuffle(assignments, true);
+          assignments.length = PARTICLE_COUNT;
+        }
+
+        return assignments;
+      });
+
+      // 클러스터 크기 계산 후 클러스터 중심 위치 업데이트
+      computeClusterCenters();
+    }
+
+    class Particle {
+      constructor(index) {
+        this.index = index;
+        this.px = 0;
+        this.py = 0;
+        this.vx = 0;
+        this.vy = 0;
+        this.initialized = false;
+      }
+
+      initialize(yearIdx0, yearIdx1, t) {
+        const a0 = allAssignments[yearIdx0]?.[this.index];
+        const a1 = allAssignments[yearIdx1]?.[this.index];
+        if (!a0 || !a1) return;
+
+        const c0 = clusterCenters[a0.clusterIdx];
+        const c1 = clusterCenters[a1.clusterIdx];
+        
+        const centerX = lerp(c0.x, c1.x, t);
+        const centerY = lerp(c0.y, c1.y, t);
+        
+        if (!this.initialized) {
+          // 초기 위치를 랜덤하게 설정
+          const angle = random(TWO_PI);
+          const dist = random(20, 50);
+          this.px = centerX + cos(angle) * dist;
+          this.py = centerY + sin(angle) * dist;
+          this.initialized = true;
+        }
+        
+        // 클러스터 중심이 변경되면 위치 조정
+        const dx = centerX - this.px;
+        const dy = centerY - this.py;
+        const dist = sqrt(dx * dx + dy * dy);
+        
+        if (dist > 100) {
+          this.px = centerX;
+          this.py = centerY;
+        }
+      }
+
+      getTargetCenter(yearIdx0, yearIdx1, t) {
+        const a0 = allAssignments[yearIdx0]?.[this.index];
+        const a1 = allAssignments[yearIdx1]?.[this.index];
+        if (!a0 || !a1) return null;
+
+        const c0 = clusterCenters[a0.clusterIdx];
+        const c1 = clusterCenters[a1.clusterIdx];
+        
+        return {
+          x: lerp(c0.x, c1.x, t),
+          y: lerp(c0.y, c1.y, t),
+          clusterIdx: a0.clusterIdx
+        };
+      }
+
+      getMaxRadius() {
+        const cols = 2;
+        const rows = 4;
+        const marginX = width * 0.15;
+        const marginY = height * 0.15;
+        const cellWidth = (width - 2 * marginX) / cols;
+        const cellHeight = (height - 2 * marginY) / rows;
+        const cellSize = Math.min(cellWidth, cellHeight);
+        
+        return cellSize * MAX_RADIUS_MULTIPLIER;
+      }
+
+      update(yearIdx0, yearIdx1, t, otherParticles) {
+        const target = this.getTargetCenter(yearIdx0, yearIdx1, t);
+        if (!target) return;
+
+        this.initialize(yearIdx0, yearIdx1, t);
+
+        // 중력 효과: 클러스터 중심으로 끌리는 힘
+        const dx = target.x - this.px;
+        const dy = target.y - this.py;
+        const dist = sqrt(dx * dx + dy * dy);
+        const maxRadius = this.getMaxRadius();
+
+        if (dist > 0) {
+          // 거리가 멀수록 중력이 강하게 작용
+          const gravityForce = GRAVITY_STRENGTH * (dist / maxRadius);
+          this.vx += (dx / dist) * gravityForce;
+          this.vy += (dy / dist) * gravityForce;
+        }
+
+        // 반발력: 다른 파티클과 충돌 방지
+        for (let other of otherParticles) {
+          if (other === this || !other.initialized) continue;
+          
+          const odx = other.px - this.px;
+          const ody = other.py - this.py;
+          const odist = sqrt(odx * odx + ody * ody);
+          
+          if (odist < REPULSION_DISTANCE && odist > 0) {
+            // 거리가 가까울수록 강한 반발력
+            const minDist = PARTICLE_RADIUS * 2;
+            const normalizedDist = constrain(odist / REPULSION_DISTANCE, 0, 1);
+            const force = REPULSION_STRENGTH * (1 - normalizedDist) / (odist + 1);
+            
+            this.vx -= (odx / odist) * force;
+            this.vy -= (ody / odist) * force;
+            
+            // 거리가 너무 가까우면 직접 밀어내기
+            if (odist < minDist) {
+              const pushForce = (minDist - odist) * 0.5;
+              this.px -= (odx / odist) * pushForce;
+              this.py -= (ody / odist) * pushForce;
+            }
+          }
+        }
+
+        // 속도 제한
+        const speed = sqrt(this.vx * this.vx + this.vy * this.vy);
+        if (speed > MAX_VELOCITY) {
+          this.vx = (this.vx / speed) * MAX_VELOCITY;
+          this.vy = (this.vy / speed) * MAX_VELOCITY;
+        }
+
+        // 마찰 적용
+        this.vx *= FRICTION;
+        this.vy *= FRICTION;
+
+        // 위치 업데이트
+        this.px += this.vx;
+        this.py += this.vy;
+
+        // 클러스터 중심에서 너무 멀어지면 제한
+        const toCenterDx = target.x - this.px;
+        const toCenterDy = target.y - this.py;
+        const toCenterDist = sqrt(toCenterDx * toCenterDx + toCenterDy * toCenterDy);
+        
+        if (toCenterDist > maxRadius) {
+          this.px = target.x - (toCenterDx / toCenterDist) * maxRadius;
+          this.py = target.y - (toCenterDy / toCenterDist) * maxRadius;
+          // 중심 쪽으로 속도 조정
+          const dot = this.vx * toCenterDx + this.vy * toCenterDy;
+          if (dot > 0) {
+            this.vx -= toCenterDx * 0.1;
+            this.vy -= toCenterDy * 0.1;
+          }
+        }
+      }
+
+      draw(yearIdx0, yearIdx1, t, filtersOn) {
+        if (!this.initialized) return;
+
+        const a0 = allAssignments[yearIdx0]?.[this.index];
+        const a1 = allAssignments[yearIdx1]?.[this.index];
+        if (!a0 || !a1) return;
+
+        const assign = t < 0.5 || yearIdx0 === yearIdx1 ? a0 : a1;
+        const key = filterKey(assign.gender, assign.ageIndex);
+        const isSelected = filtersOn && activeFilters.has(key);
+
+        if (filtersOn) {
+          if (isSelected) {
+            fill(getColorFor(assign.gender, assign.ageIndex));
+            stroke(0, 60);
+            strokeWeight(0.6);
+          } else {
+            fill(255);
+            stroke(0, 120);
+            strokeWeight(0.6);
+          }
+        } else {
+          fill(getColorFor(assign.gender, assign.ageIndex));
+          stroke(0, 40);
+          strokeWeight(0.5);
+        }
+
+        circle(this.px, this.py, PARTICLE_RADIUS * 2);
+      }
+    }
+
+    function createParticles() {
+      particles = [];
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        particles.push(new Particle(i));
+      }
+    }
+
+    function updateScrollT() {
+      const container = document.getElementById("visual-scroll");
+      if (!container) {
+        scrollT = 0;
+        return;
+      }
+      const maxScroll = container.scrollHeight - container.clientHeight;
+      scrollT = maxScroll > 0 ? constrain(container.scrollTop / maxScroll, 0, 1) : 0;
+    }
+
+    function getYearInterpolation() {
+      const nYears = years.length;
+      const pos = scrollT * Math.max(nYears - 1, 0);
+      const idx0 = floor(pos);
+      const idx1 = min(idx0 + 1, Math.max(nYears - 1, 0));
+      const t = pos - idx0;
+      return { idx0, idx1, t };
+    }
+
+    function draw() {
+      background(0);
+
+      if (!marriageData || particles.length === 0 || years.length === 0) return;
+
+      const { idx0, idx1, t } = getYearInterpolation();
+      const yearA = years[idx0];
+      const yearB = years[idx1];
+
+      const filtersOn = activeFilters.size > 0;
+
+      // 클러스터 위치에 투명 검정 배경 그리기
+      fill(0, 127.5); // 투명도 50% 검정색 (0-255 범위에서 127.5 = 50%)
+      noStroke();
+      for (const center of clusterCenters) {
+        // 클러스터 크기에 맞게 배경 크기 조정
+        const cols = 2;
+        const rows = 4;
+        const marginX = width * 0.15;
+        const marginY = height * 0.15;
+        const cellWidth = (width - 2 * marginX) / cols;
+        const cellHeight = (height - 2 * marginY) / rows;
+        const bgSize = Math.min(cellWidth, cellHeight) * 0.8;
+        rectMode(CENTER);
+        rect(center.x, center.y, bgSize, bgSize);
+      }
+      rectMode(CORNER);
+
+      // 물리 시뮬레이션: 먼저 모든 파티클 업데이트
+      for (const p of particles) {
+        p.update(idx0, idx1, t, particles);
+      }
+
+      // 그 다음 모든 파티클 그리기
+      noStroke();
+      for (const p of particles) {
+        p.draw(idx0, idx1, t, filtersOn);
+      }
+
+      // 연도 표시를 오른쪽 하단에 표시
+      const yearDisplayElem = document.getElementById("year-display");
+      if (yearDisplayElem) {
+        if (idx0 === idx1) {
+          yearDisplayElem.textContent = `${yearA}년`;
+        } else {
+          yearDisplayElem.textContent = `${yearA}년`;
+        }
+      }
+    }
+
+    function buildLegendTable() {
+      const tbody = document.querySelector("#age-gender-legend tbody");
+      if (!tbody) return;
+      tbody.innerHTML = "";
+
+      ages.forEach((ageLabel, ageIndex) => {
+        const tr = document.createElement("tr");
+
+        ["M", "F"].forEach((gender) => {
+          const td = document.createElement("td");
+
+          const checkboxWrapper = document.createElement("div");
+          checkboxWrapper.className = "color-checkbox";
+          checkboxWrapper.style.background = getColorFor(gender, ageIndex);
+
+          const input = document.createElement("input");
+          input.type = "checkbox";
+          input.dataset.gender = gender;
+          input.dataset.ageIndex = String(ageIndex);
+
+          const indicator = document.createElement("div");
+          indicator.className = "checkbox-indicator";
+
+          input.addEventListener("change", () => {
+            const key = filterKey(gender, ageIndex);
+            if (input.checked) {
+              activeFilters.add(key);
+            } else {
+              activeFilters.delete(key);
+            }
+          });
+
+          checkboxWrapper.appendChild(input);
+          checkboxWrapper.appendChild(indicator);
+          td.appendChild(checkboxWrapper);
+          tr.appendChild(td);
+        });
+
+        tbody.appendChild(tr);
+      });
+    }
+
+  </script>
+</body>
+</html>
